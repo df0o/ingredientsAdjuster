@@ -1,2 +1,6 @@
 # Ingredients Adjuster
 A quick tool that adjusts baking portions.. cause I wanna bake but I can't eat all 16 muffins from x recipe...
+
+# Ingredient Convrtsion
+Unit conversion between US & metric 
+- problems: ratio different for each ingredient..
