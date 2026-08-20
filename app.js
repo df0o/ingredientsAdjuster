@@ -29,8 +29,8 @@ presetBtns.forEach(btn => {
 
     const scale = parseFloat(btn.getAttribute('data-scale'));
     currentScaleFactor = scale;
-    customScale.value = scale;
-    scaleDisplay.textContent = scale.toFixed(1);
+    customScale.value = Math.log2(scale);
+    scaleDisplay.textContent = scale % 1 === 0 ? scale.toFixed(1) : scale.toString();
 
     updateAdjustedRecipe();
   });
@@ -85,8 +85,15 @@ function handleRecipeChange() {
 
 // Event Handler: Custom slider changed
 function handleCustomScaleChange(e) {
-  currentScaleFactor = parseFloat(e.target.value);
-  scaleDisplay.textContent = currentScaleFactor.toFixed(1);
+  const sliderVal = parseFloat(e.target.value);
+  const rawScale = Math.pow(2, sliderVal);
+  currentScaleFactor = Math.round(rawScale * 20) / 20 || 0.1;
+
+  const displayStr = (currentScaleFactor % 1 === 0)
+    ? currentScaleFactor.toFixed(1)
+    : currentScaleFactor.toFixed(2).replace(/\.?0+$/, '');
+
+  scaleDisplay.textContent = displayStr;
 
   // Deactivate preset button highlights
   presetBtns.forEach(btn => {
@@ -124,51 +131,46 @@ function parseLine(line) {
     return { original: line, isIngredient: false, isEmpty: false };
   }
 
-  // 1. Check for Range quantities, e.g. "1-2" or "1 to 2" or "1 1/2 to 2"
-  const rangeRegex = /^(\d+(?:\s+\d+\/\d+|\/\d+|\.\d+)?)\s*(?:\-|to|or)\s*(\d+(?:\s+\d+\/\d+|\/\d+|\.\d+)?)\s+(.*)$/i;
-  let match = trimmed.match(rangeRegex);
-  if (match) {
-    const qty1 = parseQtyValue(match[1]);
-    const qty2 = parseQtyValue(match[2]);
-    const rest = match[3];
-    const { unit, name } = parseUnitAndName(rest);
-    const subKey = findSubstitutionKey(name) || name.toLowerCase().trim();
+  // Find all quantity expressions across the line
+  const quantities = findAllQuantities(trimmed);
+
+  if (quantities.length > 0) {
+    const primary = quantities[0];
+    const textAfterPrimary = trimmed.slice(primary.end).trim();
+    const { unit, name } = parseUnitAndName(textAfterPrimary);
+
+    // Extract clean name for substitution matching by stripping parentheticals/brackets
+    let cleanName = name
+      .replace(/\([^)]*\)|\[[^\]]*\]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleanName) {
+      cleanName = name.trim();
+    }
+
+    const subKey = findSubstitutionKey(cleanName) || cleanName.toLowerCase().trim();
+
     return {
       original: line,
+      trimmed: trimmed,
       isIngredient: true,
-      isRange: true,
-      qty1: qty1,
-      qty2: qty2,
-      qty1Str: match[1],
-      qty2Str: match[2],
+      isRange: primary.isRange,
+      qty: primary.isRange ? undefined : primary.qty,
+      qtyStr: primary.isRange ? undefined : primary.qtyStr,
+      qty1: primary.isRange ? primary.qty1 : undefined,
+      qty2: primary.isRange ? primary.qty2 : undefined,
+      qty1Str: primary.isRange ? primary.qty1Str : undefined,
+      qty2Str: primary.isRange ? primary.qty2Str : undefined,
       unit: unit,
-      name: name,
-      subKey: subKey
+      name: cleanName || name,
+      fullName: name,
+      subKey: subKey,
+      quantities: quantities
     };
   }
 
-  // 2. Check for Single quantity, e.g. "1 1/2" or "0.5" or "3"
-  const singleQtyRegex = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+\.\d+|\d+)\s*(.*)$/;
-  match = trimmed.match(singleQtyRegex);
-  if (match) {
-    const qtyStr = match[1];
-    const rest = match[2];
-    const qty = parseQtyValue(qtyStr);
-    const { unit, name } = parseUnitAndName(rest);
-    const subKey = findSubstitutionKey(name) || name.toLowerCase().trim();
-    return {
-      original: line,
-      isIngredient: true,
-      isRange: false,
-      qty: qty,
-      qtyStr: qtyStr,
-      unit: unit,
-      name: name,
-      subKey: subKey
-    };
-  }
-
-  // 3. Implicit quantity, e.g. "pinch of salt", "dash of vanilla"
+  // Implicit quantity, e.g. "pinch of salt", "dash of vanilla"
   const implicitUnits = ["pinch", "pinches", "dash", "dashes", "clove", "cloves", "sprig", "sprigs"];
   const words = trimmed.split(/\s+/);
   const firstWord = words[0].toLowerCase().replace(/[^a-z]/g, '');
@@ -177,6 +179,7 @@ function parseLine(line) {
     const subKey = findSubstitutionKey(name) || name.toLowerCase().trim();
     return {
       original: line,
+      trimmed: trimmed,
       isIngredient: true,
       isRange: false,
       qty: 1,
@@ -184,7 +187,16 @@ function parseLine(line) {
       unit: unit,
       name: name,
       subKey: subKey,
-      isImplicit: true
+      isImplicit: true,
+      quantities: [{
+        start: 0,
+        end: 0,
+        raw: "1",
+        isRange: false,
+        qtyStr: "1",
+        qty: 1,
+        isImplicit: true
+      }]
     };
   }
 
@@ -192,21 +204,193 @@ function parseLine(line) {
   return { original: line, isIngredient: false, isEmpty: false };
 }
 
-// Converts quantities like "1 1/2" to floats
+// Helper to detect if a unit string is metric
+function isMetricUnit(unitStr) {
+  if (!unitStr) return false;
+  const clean = unitStr.toLowerCase().replace(/[^a-z]/g, '');
+  return ["g", "gram", "grams", "kg", "kilogram", "kilograms", "ml", "milliliter", "milliliters", "l", "liter", "liters", "mg", "milligram", "milligrams"].includes(clean);
+}
+
+// Finds all quantity occurrences (ranges and single quantities) in a line string
+function findAllQuantities(lineStr) {
+  const SINGLE_QTY_PAT = `(?:\\d+\\s+(?:and\\s+)?\\d+/\\d+|\\d+\\s+(?:and\\s+)?\\d+\\.\\d+|\\d+/\\d+|\\d+\\.\\d+|\\d+)`;
+  const RANGE_SEP_PAT = `(?:[\\-\\u2013\\u2014]|to|or)`;
+  const rangeRegex = new RegExp(`(${SINGLE_QTY_PAT})\\s*(${RANGE_SEP_PAT})\\s*(${SINGLE_QTY_PAT})`, 'gi');
+  const singleRegex = new RegExp(SINGLE_QTY_PAT, 'gi');
+
+  const matches = [];
+  const occupied = new Array(lineStr.length).fill(false);
+
+  // 1. Find Ranges first (greedy match)
+  let m;
+  while ((m = rangeRegex.exec(lineStr)) !== null) {
+    const start = m.index;
+    const end = m.index + m[0].length;
+
+    // Check non-quantity suffixes like %, °, °F, °C
+    const suffix = lineStr.slice(end, end + 4);
+    if (/^\s*[%°]|^°[FC]/i.test(suffix)) continue;
+
+    const textAfter = lineStr.slice(end).trim();
+    const unitMatch = textAfter.match(/^([a-z.]+)\b/i);
+    const unitStr = unitMatch ? unitMatch[1] : "";
+    const isMetric = isMetricUnit(unitStr);
+
+    const rawMatch = m[0];
+    const idx1 = rawMatch.indexOf(m[1]);
+    const idx3 = rawMatch.lastIndexOf(m[3]);
+    const sepStr = rawMatch.slice(idx1 + m[1].length, idx3);
+
+    matches.push({
+      start,
+      end,
+      raw: m[0],
+      isRange: true,
+      qty1Str: m[1],
+      qty2Str: m[3],
+      sep: sepStr,
+      qty1: parseQtyValue(m[1]),
+      qty2: parseQtyValue(m[3]),
+      unit: unitStr,
+      isMetric: isMetric
+    });
+
+    for (let i = start; i < end; i++) occupied[i] = true;
+  }
+
+  // 2. Find Single Quantities in remaining unoccupied spans
+  while ((m = singleRegex.exec(lineStr)) !== null) {
+    const start = m.index;
+    const end = m.index + m[0].length;
+
+    if (occupied[start]) continue;
+
+    // Check non-quantity suffixes like %, °, °F, °C
+    const suffix = lineStr.slice(end, end + 4);
+    if (/^\s*[%°]|^°[FC]/i.test(suffix)) continue;
+
+    const textAfter = lineStr.slice(end).trim();
+    const unitMatch = textAfter.match(/^([a-z.]+)\b/i);
+    const unitStr = unitMatch ? unitMatch[1] : "";
+    const isMetric = isMetricUnit(unitStr);
+
+    matches.push({
+      start,
+      end,
+      raw: m[0],
+      isRange: false,
+      qtyStr: m[0],
+      qty: parseQtyValue(m[0]),
+      unit: unitStr,
+      isMetric: isMetric
+    });
+
+    for (let i = start; i < end; i++) occupied[i] = true;
+  }
+
+  matches.sort((a, b) => a.start - b.start);
+  return matches;
+}
+
+// Converts quantities like "1 1/2" or "2 and 1/4" to floats
 function parseQtyValue(str) {
-  str = str.trim();
+  if (!str) return 0;
+  str = str.replace(/\band\b/gi, ' ').replace(/\s+/g, ' ').trim();
+
   if (str.includes(' ')) {
     const parts = str.split(/\s+/);
-    const whole = parseFloat(parts[0]);
-    const fracParts = parts[1].split('/');
-    return whole + parseFloat(fracParts[0]) / parseFloat(fracParts[1]);
+    const whole = parseFloat(parts[0]) || 0;
+    if (parts[1] && parts[1].includes('/')) {
+      const fracParts = parts[1].split('/');
+      return whole + (parseFloat(fracParts[0]) / parseFloat(fracParts[1]) || 0);
+    }
+    return whole + (parseFloat(parts[1]) || 0);
   }
   if (str.includes('/')) {
     const parts = str.split('/');
-    return parseFloat(parts[0]) / parseFloat(parts[1]);
+    return (parseFloat(parts[0]) / parseFloat(parts[1])) || 0;
   }
-  return parseFloat(str);
+  return parseFloat(str) || 0;
 }
+
+// Reconstructs scaled HTML for an ingredient line, highlighting all scaled quantities
+function buildScaledLineHTML(line, scaleFactor) {
+  if (!line.quantities || line.quantities.length === 0) {
+    return escapeHtml(line.trimmed || line.original);
+  }
+
+  if (line.isImplicit) {
+    const scaledQty = line.qty * scaleFactor;
+    const isMetric = isMetricUnit(line.unit);
+    const qtyText = formatQuantity(scaledQty, isMetric);
+    return `<span class="qty-highlight">${escapeHtml(qtyText)}</span> ${line.unit ? escapeHtml(line.unit) + ' ' : ''}${escapeHtml(line.name)}`;
+  }
+
+  let resultHTML = "";
+  let lastIndex = 0;
+
+  line.quantities.forEach((q) => {
+    resultHTML += escapeHtml(line.trimmed.slice(lastIndex, q.start));
+
+    let scaledStr = "";
+    if (q.isRange) {
+      const s1 = q.qty1 * scaleFactor;
+      const s2 = q.qty2 * scaleFactor;
+      const f1 = formatQuantity(s1, q.isMetric);
+      const f2 = formatQuantity(s2, q.isMetric);
+      scaledStr = `${f1} to ${f2}`;
+    } else {
+      const s = q.qty * scaleFactor;
+      scaledStr = formatQuantity(s, q.isMetric);
+    }
+
+    resultHTML += `<span class="qty-highlight">${escapeHtml(scaledStr)}</span>`;
+    lastIndex = q.end;
+  });
+
+  resultHTML += escapeHtml(line.trimmed.slice(lastIndex));
+  return resultHTML;
+}
+
+// Reconstructs scaled plain text for copying to clipboard
+function buildScaledLineText(line, scaleFactor) {
+  if (!line.quantities || line.quantities.length === 0) {
+    return line.trimmed || line.original;
+  }
+
+  if (line.isImplicit) {
+    const scaledQty = line.qty * scaleFactor;
+    const isMetric = isMetricUnit(line.unit);
+    const qtyText = formatQuantity(scaledQty, isMetric);
+    return `${qtyText} ${line.unit ? line.unit + ' ' : ''}${line.name}`;
+  }
+
+  let resultText = "";
+  let lastIndex = 0;
+
+  line.quantities.forEach((q) => {
+    resultText += line.trimmed.slice(lastIndex, q.start);
+
+    let scaledStr = "";
+    if (q.isRange) {
+      const s1 = q.qty1 * scaleFactor;
+      const s2 = q.qty2 * scaleFactor;
+      const f1 = formatQuantity(s1, q.isMetric);
+      const f2 = formatQuantity(s2, q.isMetric);
+      scaledStr = `${f1} to ${f2}`;
+    } else {
+      const s = q.qty * scaleFactor;
+      scaledStr = formatQuantity(s, q.isMetric);
+    }
+
+    resultText += scaledStr;
+    lastIndex = q.end;
+  });
+
+  resultText += line.trimmed.slice(lastIndex);
+  return resultText;
+}
+
 
 // Helper to separate unit and ingredient name
 function parseUnitAndName(rest) {
@@ -281,9 +465,18 @@ function findSubstitutionKey(name) {
   return null;
 }
 
-// Formats decimal numbers back to neat baking fractions or clean decimals
-function formatQuantity(val) {
-  if (!val) return "";
+// Formats decimal numbers back to neat baking fractions with "and" or clean decimals
+function formatQuantity(val, isMetric = false) {
+  if (!val && val !== 0) return "";
+  if (val === 0) return "0";
+
+  if (isMetric) {
+    if (Math.abs(val - Math.round(val)) < 0.001) {
+      return Math.round(val).toString();
+    }
+    // Clean decimal formatting for metric units (e.g. 3.5, 12.25)
+    return val.toFixed(2).replace(/\.?0+$/, '');
+  }
 
   const tolerance = 0.025;
   const whole = Math.floor(val);
@@ -293,35 +486,34 @@ function formatQuantity(val) {
     return whole > 0 ? whole.toString() : "";
   }
   if (Math.abs(frac - 0.125) < tolerance) {
-    return whole > 0 ? `${whole} 1/8` : "1/8";
+    return whole > 0 ? `${whole} and 1/8` : "1/8";
   }
   if (Math.abs(frac - 0.25) < tolerance) {
-    return whole > 0 ? `${whole} 1/4` : "1/4";
+    return whole > 0 ? `${whole} and 1/4` : "1/4";
   }
   if (Math.abs(frac - 0.333) < tolerance) {
-    return whole > 0 ? `${whole} 1/3` : "1/3";
+    return whole > 0 ? `${whole} and 1/3` : "1/3";
   }
   if (Math.abs(frac - 0.375) < tolerance) {
-    return whole > 0 ? `${whole} 3/8` : "3/8";
+    return whole > 0 ? `${whole} and 3/8` : "3/8";
   }
   if (Math.abs(frac - 0.5) < tolerance) {
-    return whole > 0 ? `${whole} 1/2` : "1/2";
+    return whole > 0 ? `${whole} and 1/2` : "1/2";
   }
   if (Math.abs(frac - 0.625) < tolerance) {
-    return whole > 0 ? `${whole} 5/8` : "5/8";
+    return whole > 0 ? `${whole} and 5/8` : "5/8";
   }
   if (Math.abs(frac - 0.666) < tolerance) {
-    return whole > 0 ? `${whole} 2/3` : "2/3";
+    return whole > 0 ? `${whole} and 2/3` : "2/3";
   }
   if (Math.abs(frac - 0.75) < tolerance) {
-    return whole > 0 ? `${whole} 3/4` : "3/4";
+    return whole > 0 ? `${whole} and 3/4` : "3/4";
   }
   if (Math.abs(frac - 0.875) < tolerance) {
-    return whole > 0 ? `${whole} 7/8` : "7/8";
+    return whole > 0 ? `${whole} and 7/8` : "7/8";
   }
 
-  // For numbers like 1.1 or 0.15, display as 1 decimal place or 2
-  console.log(`val: ${val}, whole: ${whole}, frac: ${frac}`);
+  // For numbers like 1.1 or 0.15, display as clean decimal
   return val.toFixed(2).replace(/\.?0+$/, '');
 }
 
@@ -331,14 +523,15 @@ function getSubstitutionDetails(line, sub, scaleFactor) {
     const componentsList = sub.components.map(comp => {
       let compQtyText = "";
       let compUnitText = (comp.unit === "ratio" || !comp.unit) ? line.unit : comp.unit;
+      const compIsMetric = isMetricUnit(compUnitText);
 
       if (line.isRange) {
         const scaled1 = line.qty1 * scaleFactor * comp.ratio;
         const scaled2 = line.qty2 * scaleFactor * comp.ratio;
-        compQtyText = `${formatQuantity(scaled1)}-${formatQuantity(scaled2)}`;
+        compQtyText = `${formatQuantity(scaled1, compIsMetric)} to ${formatQuantity(scaled2, compIsMetric)}`;
       } else {
         const scaled = line.qty * scaleFactor * comp.ratio;
-        compQtyText = formatQuantity(scaled);
+        compQtyText = formatQuantity(scaled, compIsMetric);
       }
 
       return {
@@ -349,10 +542,11 @@ function getSubstitutionDetails(line, sub, scaleFactor) {
     });
 
     let origQtyText = "";
+    const lineIsMetric = isMetricUnit(line.unit);
     if (line.isRange) {
-      origQtyText = `${formatQuantity(line.qty1 * scaleFactor)}-${formatQuantity(line.qty2 * scaleFactor)}`;
+      origQtyText = `${formatQuantity(line.qty1 * scaleFactor, lineIsMetric)} to ${formatQuantity(line.qty2 * scaleFactor, lineIsMetric)}`;
     } else {
-      origQtyText = formatQuantity(line.qty * scaleFactor);
+      origQtyText = formatQuantity(line.qty * scaleFactor, lineIsMetric);
     }
 
     return {
@@ -366,14 +560,15 @@ function getSubstitutionDetails(line, sub, scaleFactor) {
   } else {
     let qtyText = "";
     let unitText = sub.unit === "ratio" ? line.unit : sub.unit;
+    const subIsMetric = isMetricUnit(unitText);
 
     if (line.isRange) {
       const scaled1 = line.qty1 * scaleFactor * sub.ratio;
       const scaled2 = line.qty2 * scaleFactor * sub.ratio;
-      qtyText = `${formatQuantity(scaled1)}-${formatQuantity(scaled2)}`;
+      qtyText = `${formatQuantity(scaled1, subIsMetric)} to ${formatQuantity(scaled2, subIsMetric)}`;
     } else {
       const scaled = line.qty * scaleFactor * sub.ratio;
-      qtyText = formatQuantity(scaled);
+      qtyText = formatQuantity(scaled, subIsMetric);
     }
 
     return {
@@ -499,26 +694,12 @@ function updateAdjustedRecipe() {
       }
     } else {
       // Original ingredient without substitution
-      let qtyText = "";
-      if (line.isRange) {
-        const scaled1 = line.qty1 * currentScaleFactor;
-        const scaled2 = line.qty2 * currentScaleFactor;
-        qtyText = `${formatQuantity(scaled1)}-${formatQuantity(scaled2)}`;
-      } else {
-        const scaledQty = line.qty * currentScaleFactor;
-        qtyText = formatQuantity(scaledQty);
-      }
-
       const rowDiv = document.createElement('div');
       rowDiv.className = 'ingredient-row';
 
       const textSpan = document.createElement('span');
       textSpan.className = 'ingredient-text';
-      if (qtyText) {
-        textSpan.innerHTML = `<span class="qty-highlight">${escapeHtml(qtyText)}</span> ${line.unit ? escapeHtml(line.unit) + ' ' : ''}${escapeHtml(line.name)}`;
-      } else {
-        textSpan.textContent = line.name;
-      }
+      textSpan.innerHTML = buildScaledLineHTML(line, currentScaleFactor);
       rowDiv.appendChild(textSpan);
 
       const subBadgeContainer = document.createElement('div');
@@ -982,16 +1163,7 @@ function copyRecipeToClipboard() {
         copyText += `${details.qtyText ? details.qtyText + ' ' : ''}${details.unitText ? details.unitText + ' ' : ''}${details.name} (substitute for ${line.name})\n`;
       }
     } else {
-      let qtyText = "";
-      if (line.isRange) {
-        const scaled1 = line.qty1 * currentScaleFactor;
-        const scaled2 = line.qty2 * currentScaleFactor;
-        qtyText = `${formatQuantity(scaled1)}-${formatQuantity(scaled2)}`;
-      } else {
-        const scaledQty = line.qty * currentScaleFactor;
-        qtyText = formatQuantity(scaledQty);
-      }
-      copyText += `${qtyText ? qtyText + ' ' : ''}${line.unit ? line.unit + ' ' : ''}${line.name}\n`;
+      copyText += `${buildScaledLineText(line, currentScaleFactor)}\n`;
     }
   });
 

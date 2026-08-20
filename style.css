@@ -25,6 +25,7 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -160,12 +161,6 @@ body {
   align-items: start;
 }
 
-@media (max-width: 900px) {
-  .main-content {
-    grid-template-columns: 1fr;
-  }
-}
-
 /* Card Styling */
 .card {
   background-color: var(--card-bg);
@@ -260,8 +255,30 @@ body {
 }
 
 @media (max-width: 900px) {
+  .main-content {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
   .controls-card {
     grid-column: auto;
+  }
+
+  .card:last-child {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .input-card {
+    min-height: auto;
+  }
+
+  #recipeInput {
+    height: 300px;
+  }
+
+  .output-card {
+    min-height: auto;
   }
 }
 
@@ -910,4 +927,150 @@ body {
   color: #6B21A8;
   padding: 2px 6px;
   border-radius: 8px;
+}
+
+/* Mobile & Tablet Fine-Tuning */
+@media (max-width: 600px) {
+  body {
+    padding: 1rem 0.75rem;
+  }
+
+  .app-container {
+    gap: 1.25rem;
+  }
+
+  .app-header {
+    margin-bottom: 0.25rem;
+  }
+
+  .header-logo {
+    width: 64px;
+    height: 64px;
+    border-width: 3px;
+    margin-bottom: 0.5rem;
+  }
+
+  .bread-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .app-title {
+    font-size: 1.85rem;
+  }
+
+  .app-subtitle {
+    font-size: 0.95rem;
+    line-height: 1.35;
+    padding: 0 0.25rem;
+  }
+
+  .card-header {
+    padding: 1rem;
+  }
+
+  .card-header h2 {
+    font-size: 1.25rem;
+  }
+
+  .card-body {
+    padding: 1rem;
+  }
+
+  .helper-text {
+    font-size: 0.88rem;
+    margin-bottom: 0.75rem;
+  }
+
+  #recipeInput {
+    height: 220px;
+    font-size: 0.95rem;
+    padding: 0.85rem;
+  }
+
+  .controls-card {
+    padding: 1rem;
+  }
+
+  .control-label {
+    font-size: 1rem;
+  }
+
+  .presets-container {
+    gap: 0.4rem;
+  }
+
+  .preset-btn {
+    padding: 0.55rem 0.35rem;
+    font-size: 0.9rem;
+    border-radius: 12px;
+    min-width: 0;
+  }
+
+  .slider-side-emoji {
+    font-size: 1.2rem;
+  }
+
+  .output-card .card-body {
+    padding: 1.25rem 0.75rem 1.25rem 1.75rem;
+    background-size: 100% 28px;
+  }
+
+  .output-card .card-body::before {
+    left: 1.25rem;
+  }
+
+  .ingredient-row {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .ingredient-item {
+    min-height: 28px;
+    line-height: 28px;
+    font-size: 0.98rem;
+  }
+
+  .sub-toggle-btn {
+    font-size: 0.75rem;
+    padding: 3px 8px;
+  }
+
+  .substitute-modal {
+    width: min(310px, calc(100vw - 2.5rem));
+    right: -0.25rem;
+    max-height: 320px;
+    z-index: 300;
+  }
+
+  .copy-btn {
+    padding: 4px 10px;
+    font-size: 0.82rem;
+  }
+
+  .toast-msg {
+    font-size: 0.9rem;
+    padding: 8px 16px;
+    width: max-content;
+    max-width: 90vw;
+  }
+}
+
+@media (max-width: 380px) {
+  .app-title {
+    font-size: 1.6rem;
+  }
+
+  .presets-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .output-card .card-body {
+    padding: 1rem 0.5rem 1rem 1.25rem;
+  }
+
+  .output-card .card-body::before {
+    left: 0.9rem;
+  }
 }
