@@ -20,7 +20,7 @@ A web application designed to help bakers scale recipe portion sizes and discove
 
 ## 💡 How It Works
 
-1. **Paste Recipe**: Paste your ingredients and instructions into the input box.
+1. **Paste Recipe**: Paste your ingredients into the Ingredients box and baking steps into the Instructions box.
 2. **Select Scale**: Click preset multiplier buttons or drag the scaling slider.
 3. **Explore Substitutes**: Expand ingredients with available substitutions (e.g., replacing 1 egg with a Flax Egg or Applesauce).
 4. **Copy & Bake**: Copy the adjusted ingredient list and instructions to get baking!

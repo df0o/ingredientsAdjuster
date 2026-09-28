@@ -53,61 +53,87 @@
     </header>
 
     <main class="main-content">
-      <!-- Input Recipe Section -->
-      <section class="card input-card">
-        <div class="card-header">
-          <span class="emoji-icon">📝</span>
-          <h2>Your Recipe</h2>
-        </div>
-        <div class="card-body">
-          <p class="helper-text">Paste your ingredients and instructions below. The adjuster will find the ingredients
-            and help you scale them!</p>
-          <textarea id="recipeInput" placeholder="Susie's chocolate chip cookies
+      <div class="recipe-input-column">
+        <!-- Input Recipe Section -->
+        <section class="card input-card">
+          <div class="card-header">
+            <span class="emoji-icon">📝</span>
+            <h2>Your Recipe</h2>
+          </div>
+          <div class="card-body input-card-body">
+            <p class="helper-text">Enter your ingredients and baking instructions in separate boxes below to adjust both
+              accurately!</p>
 
-2 1/2 cups all-purpose flour
-2 large eggs
-3/4 tsp baking soda
-1/8 tsp salt
-1 cup unsalted butter, softened
-3/4 cup packed brown sugar
-1 tsp vanilla extract
-1/3 cup semi-sweet chocolate chips
-1/4 cup chopped nuts
+            <!-- Ingredients Input Box -->
+            <div class="input-section">
+              <div class="input-section-header">
+                <label for="ingredientsInput" class="input-label">
+                  <span class="input-label-icon">🥣</span>
+                  <span class="input-label-text">Ingredients</span>
+                </label>
+                <div class="input-header-actions">
+                  <span class="input-badge">1 per line</span>
+                  <button type="button" id="clearIngredientsBtn" class="clear-input-btn" title="Clear ingredients list">
+                    <svg class="clear-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                    <span>Clear</span>
+                  </button>
+                </div>
+              </div>
+              <textarea id="ingredientsInput" placeholder="Ingredients..."></textarea>
+            </div>
 
-1. Preheat oven at 350°F (175°C).
-2. Mix flour, baking soda, salt in medium bowl.
-3. Cream the butter and sugar.
-4. Add eggs one at a time, mixing well after each addition.
-5. Add dry ingredients into wet mixture in three parts.
-6. Stir in chocolate chips and nuts.
-7. Spoon onto baking sheet.
-8. Bake for 10-12 minutes."></textarea>
-        </div>
-      </section>
-
-      <!-- Adjuster Controls Section -->
-      <section class="controls-card">
-        <div class="controls-wrapper">
-          <div class="control-group">
-            <label class="control-label">Scale Factor</label>
-            <div class="presets-container">
-              <button class="preset-btn" data-scale="0.5">½x</button>
-              <button class="preset-btn active" data-scale="1">1x</button>
-              <button class="preset-btn" data-scale="1.5">1½x</button>
-              <button class="preset-btn" data-scale="2">2x</button>
+            <!-- Instructions Input Box -->
+            <div class="input-section">
+              <div class="input-section-header">
+                <label for="instructionsInput" class="input-label">
+                  <span class="input-label-icon">📋</span>
+                  <span class="input-label-text">Instructions</span>
+                </label>
+                <div class="input-header-actions">
+                  <span class="input-badge">Steps & directions</span>
+                  <button type="button" id="clearInstructionsBtn" class="clear-input-btn" title="Clear instructions">
+                    <svg class="clear-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                    <span>Clear</span>
+                  </button>
+                </div>
+              </div>
+              <textarea id="instructionsInput" placeholder="Instructions..."></textarea>
             </div>
           </div>
+        </section>
 
-          <div class="control-group custom-scale-group">
-            <label for="customScale" class="control-label">Custom Scaling (<span id="scaleDisplay">1.0</span>x)</label>
-            <div class="slider-container">
-              <span class="slider-side-emoji">🥖</span>
-              <input type="range" id="customScale" min="-3.32" max="3.32" step="0.01" value="0">
-              <span class="slider-side-emoji">🍞</span>
+        <!-- Adjuster Controls Section -->
+        <section class="controls-card">
+          <div class="controls-wrapper">
+            <div class="control-group">
+              <label class="control-label">Scale Factor</label>
+              <div class="presets-container">
+                <button class="preset-btn" data-scale="0.5">½x</button>
+                <button class="preset-btn active" data-scale="1">1x</button>
+                <button class="preset-btn" data-scale="1.5">1½x</button>
+                <button class="preset-btn" data-scale="2">2x</button>
+              </div>
+            </div>
+
+            <div class="control-group custom-scale-group">
+              <label for="customScale" class="control-label">Custom Scaling (<span id="scaleDisplay">1.0</span>x)</label>
+              <div class="slider-container">
+                <span class="slider-side-emoji">🥖</span>
+                <input type="range" id="customScale" min="-3.32" max="3.32" step="0.01" value="0">
+                <span class="slider-side-emoji">🍞</span>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
       <!-- Output Recipe Section -->
       <section class="card output-card">
@@ -131,8 +157,15 @@
           </div>
 
           <div id="recipeOutputContent" class="output-content hidden">
-            <div class="ingredientWrapper">
-              <div class="section-title">Ingredients</div>
+            <div class="ingredientWrapper hide-substitutes">
+              <div class="section-title-bar">
+                <div class="section-title">Ingredients</div>
+                <label class="sub-toggle-control" title="Show or hide substitution buttons">
+                  <input type="checkbox" id="toggleSubstitutes">
+                  <span class="sub-toggle-track"></span>
+                  <span class="sub-toggle-label">Substitutions</span>
+                </label>
+              </div>
               <ul id="ingredientsList" class="ingredients-list">
                 <!-- Dynamically populated ingredients with checkboxes/substitutes -->
               </ul>

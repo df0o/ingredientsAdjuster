@@ -7,7 +7,8 @@ let activeSubstitutions = {}; // maps ingredient index to selected substitute in
 let webllmEngine = null;
 
 // UI Element References
-const recipeInput = document.getElementById('recipeInput');
+const ingredientsInput = document.getElementById('ingredientsInput');
+const instructionsInput = document.getElementById('instructionsInput');
 const presetBtns = document.querySelectorAll('.preset-btn');
 const customScale = document.getElementById('customScale');
 const scaleDisplay = document.getElementById('scaleDisplay');
@@ -17,10 +18,44 @@ const ingredientsList = document.getElementById('ingredientsList');
 const instructionsWrapper = document.getElementById('instructionsWrapper');
 const instructionsText = document.getElementById('instructionsText');
 const copyBtn = document.getElementById('copyBtn');
+const clearIngredientsBtn = document.getElementById('clearIngredientsBtn');
+const clearInstructionsBtn = document.getElementById('clearInstructionsBtn');
+const toggleSubstitutes = document.getElementById('toggleSubstitutes');
+const ingredientWrapper = document.querySelector('.ingredientWrapper');
 
 // Initialize Event Listeners
-recipeInput.addEventListener('input', handleRecipeChange);
+ingredientsInput.addEventListener('input', handleRecipeChange);
+instructionsInput.addEventListener('input', handleRecipeChange);
 customScale.addEventListener('input', handleCustomScaleChange);
+
+if (clearIngredientsBtn) {
+  clearIngredientsBtn.addEventListener('click', () => {
+    ingredientsInput.value = '';
+    handleRecipeChange();
+    ingredientsInput.focus();
+  });
+}
+
+if (clearInstructionsBtn) {
+  clearInstructionsBtn.addEventListener('click', () => {
+    instructionsInput.value = '';
+    handleRecipeChange();
+    instructionsInput.focus();
+  });
+}
+
+if (toggleSubstitutes) {
+  toggleSubstitutes.addEventListener('change', () => {
+    const wrapper = document.querySelector('.ingredientWrapper');
+    if (!wrapper) return;
+    if (toggleSubstitutes.checked) {
+      wrapper.classList.remove('hide-substitutes');
+    } else {
+      wrapper.classList.add('hide-substitutes');
+      closeAllModals();
+    }
+  });
+}
 
 presetBtns.forEach(btn => {
   btn.addEventListener('click', () => {
@@ -40,9 +75,7 @@ copyBtn.addEventListener('click', copyRecipeToClipboard);
 
 // Seed initial recipe on DOM ready
 window.addEventListener('DOMContentLoaded', () => {
-  recipeInput.value = `Susie's chocolate chip cookies
-
-2 1/2 cups all-purpose flour
+  ingredientsInput.value = `2 1/2 cups all-purpose flour
 2 large eggs
 3/4 tsp baking soda
 1/8 tsp salt
@@ -50,16 +83,16 @@ window.addEventListener('DOMContentLoaded', () => {
 3/4 cup packed brown sugar
 1 tsp vanilla extract
 1/3 cup semi-sweet chocolate chips
-1/4 cup chopped nuts
+1/4 cup chopped nuts`;
 
-1. Preheat oven at 350°F (175°C).
-2. Mix flour, baking soda, salt in medium bowl.
-3. Cream the butter and sugar.
-4. Add eggs one at a time, mixing well after each addition.
-5. Add dry ingredients into wet mixture in three parts.
-6. Stir in chocolate chips and walnuts.
-7. Spoon onto baking sheet.
-8. Bake for 10-12 minutes.`;
+  instructionsInput.value = `Preheat oven at 350°F (175°C).
+Mix flour, baking soda, salt in medium bowl.
+Cream the butter and sugar.
+Add eggs one at a time, mixing well after each addition.
+Add dry ingredients into wet mixture in three parts.
+Stir in chocolate chips and nuts.
+Spoon onto baking sheet.
+Bake for 10-12 minutes.`;
 
   handleRecipeChange();
 });
@@ -67,8 +100,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // Event Handler: Input text changed
 function handleRecipeChange() {
-  const text = recipeInput.value;
-  if (!text.trim()) {
+  const ingText = ingredientsInput.value;
+  const instText = instructionsInput.value;
+
+  if (!ingText.trim() && !instText.trim()) {
     recipeOutputEmpty.classList.remove('hidden');
     recipeOutputContent.classList.add('hidden');
     parsedRecipe = [];
@@ -79,7 +114,7 @@ function handleRecipeChange() {
   recipeOutputEmpty.classList.add('hidden');
   recipeOutputContent.classList.remove('hidden');
 
-  parseRecipeText(text);
+  parseRecipeText(ingText);
   updateAdjustedRecipe();
 }
 
@@ -108,27 +143,27 @@ function handleCustomScaleChange(e) {
   updateAdjustedRecipe();
 }
 
-// Parser: Converts raw text into lines and checks for ingredients
+// Parser: Converts raw ingredients text into lines and checks for ingredients
 function parseRecipeText(text) {
   const lines = text.split('\n');
   parsedRecipe = lines.map((line, index) => {
-    return parseLine(line);
+    return parseIngredientLine(line);
   });
 }
 
-// Parses a single line
-function parseLine(line) {
+// Parses a single ingredient line
+function parseIngredientLine(line) {
   const trimmed = line.trim();
 
   if (!trimmed) {
     return { original: line, isIngredient: false, isEmpty: true };
   }
 
-  // Filter out headers or obvious steps
-  if (/^\d+\.\s/.test(trimmed) ||
-    /^(instructions|directions|steps|method):?$/i.test(trimmed) ||
-    (trimmed.toLowerCase().endsWith(':') && trimmed.length < 30)) {
-    return { original: line, isIngredient: false, isEmpty: false };
+  // Section header or descriptive sub-heading in ingredients list
+  if (/^(instructions|directions|steps|method):?$/i.test(trimmed) ||
+    (trimmed.endsWith(':') && trimmed.length < 40) ||
+    /^(for the|frosting|filling|crust|topping|glaze|dry ingredients|wet ingredients)/i.test(trimmed)) {
+    return { original: line, trimmed: trimmed, isIngredient: false, isEmpty: false, isHeader: true };
   }
 
   // Find all quantity expressions across the line
@@ -581,91 +616,257 @@ function getSubstitutionDetails(line, sub, scaleFactor) {
   }
 }
 
+// Helper to extract known ingredient keywords from parsed ingredients
+function getKnownIngredientWords(ingredients) {
+  const words = new Set();
+  if (!ingredients) return words;
+  ingredients.forEach(ing => {
+    if (!ing.isIngredient || !ing.name) return;
+    const clean = ing.name.toLowerCase().replace(/[^a-z\s]/g, ' ');
+    clean.split(/\s+/).forEach(w => {
+      if (w.length >= 3 && !['and', 'the', 'for', 'with', 'into', 'part', 'parts', 'room', 'temperature', 'cut', 'bowl'].includes(w)) {
+        words.add(w);
+      }
+    });
+  });
+  return words;
+}
+
+// Adjusts an instruction line by scaling ingredient amounts while keeping times, temperatures, step numbers, and pan sizes intact
+function adjustInstructionLine(line, scaleFactor, knownWords = new Set()) {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return { html: "", text: "", isEmpty: true };
+  }
+
+  const quantities = findAllQuantities(trimmed);
+  if (quantities.length === 0) {
+    return { html: escapeHtml(trimmed), text: trimmed, isEmpty: false };
+  }
+
+  const INGREDIENT_UNITS_REGEX = /^\s*(?:cups?|c\.|teaspoons?|tsps?|tsp\.|tablespoons?|tbsps?|tbsp\.|tbs\.|grams?|g\b|kilograms?|kg\b|milliliters?|ml\b|ounces?|oz\.|oz\b|pounds?|lbs?|lb\.|pinches?|pinch|dashes?|dash|cans?|packages?|pkgs?|pkg\.|slices?|sticks?|cloves?|sprigs?|pieces?|quarts?|qt\.|pints?|pt\.)\b/i;
+  const TIME_REGEX = /^\s*(?:seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?)\b/i;
+  const TEMP_REGEX = /^\s*(?:°\s*[FC]?|deg(?:ree)?s?\s*(?:[FC]|fahrenheit|celsius)?|gas\s*mark)/i;
+  const DIMENSION_REGEX = /^\s*(?:inches|inch|in\b|cm\b|mm\b|["\u201d]|x\s*\d+|-inch|-cm)\b/i;
+  const STEP_PREFIX_REGEX = /(?:^|\s)step\s*#?$/i;
+  const SETTING_PREFIX_REGEX = /(?:speed|level|setting|power|number|#)\s*$/i;
+
+  let htmlResult = "";
+  let textResult = "";
+  let lastIndex = 0;
+
+  quantities.forEach(q => {
+    const beforeText = trimmed.slice(lastIndex, q.start);
+    htmlResult += escapeHtml(beforeText);
+    textResult += beforeText;
+
+    const afterSlice = trimmed.slice(q.end, q.end + 25);
+    const beforeSlice = trimmed.slice(0, q.start);
+
+    // Is it a step number at start of line? e.g. "1. ", "2) ", "1 - "
+    const isStepNumber = (q.start === 0 || beforeSlice.trim() === "") &&
+      /^[.)\s:\-]/.test(trimmed.slice(q.end));
+
+    const isStepNamed = STEP_PREFIX_REGEX.test(beforeSlice);
+    const isSetting = SETTING_PREFIX_REGEX.test(beforeSlice);
+    const isTime = TIME_REGEX.test(afterSlice);
+    const isTemp = TEMP_REGEX.test(afterSlice) || /gas\s*mark\s*$/i.test(beforeSlice);
+    const isDimension = DIMENSION_REGEX.test(afterSlice) || /\d+\s*x\s*$/i.test(beforeSlice);
+
+    // Is it followed by an ingredient unit?
+    const hasIngredientUnit = INGREDIENT_UNITS_REGEX.test(afterSlice);
+
+    // Is it followed by a known ingredient keyword from the ingredients list?
+    let hasKnownIngredient = false;
+    if (!hasIngredientUnit && knownWords.size > 0) {
+      const wordsAfter = afterSlice.toLowerCase().replace(/[^a-z\s]/g, ' ').trim().split(/\s+/);
+      for (let i = 0; i < Math.min(wordsAfter.length, 3); i++) {
+        if (knownWords.has(wordsAfter[i])) {
+          hasKnownIngredient = true;
+          break;
+        }
+      }
+    }
+
+    const shouldScale = !isStepNumber && !isStepNamed && !isSetting && !isTime && !isTemp && !isDimension &&
+      (hasIngredientUnit || hasKnownIngredient);
+
+    if (shouldScale) {
+      let scaledStr = "";
+      if (q.isRange) {
+        const s1 = q.qty1 * scaleFactor;
+        const s2 = q.qty2 * scaleFactor;
+        scaledStr = `${formatQuantity(s1, q.isMetric)} to ${formatQuantity(s2, q.isMetric)}`;
+      } else {
+        const s = q.qty * scaleFactor;
+        scaledStr = formatQuantity(s, q.isMetric);
+      }
+      htmlResult += `<span class="qty-highlight">${escapeHtml(scaledStr)}</span>`;
+      textResult += scaledStr;
+    } else {
+      const rawText = trimmed.slice(q.start, q.end);
+      htmlResult += escapeHtml(rawText);
+      textResult += rawText;
+    }
+
+    lastIndex = q.end;
+  });
+
+  const trailingText = trimmed.slice(lastIndex);
+  htmlResult += escapeHtml(trailingText);
+  textResult += trailingText;
+
+  return { html: htmlResult, text: textResult, isEmpty: false };
+}
+
 // Renders the adjusted recipe in the UI
 function updateAdjustedRecipe() {
   ingredientsList.innerHTML = '';
-  let instructionLines = [];
+  instructionsText.innerHTML = '';
 
-  parsedRecipe.forEach((line, index) => {
-    if (!line.isIngredient) {
-      if (!line.isEmpty) {
-        instructionLines.push(line.original);
+  const hasIngredients = parsedRecipe && parsedRecipe.some(line => !line.isEmpty);
+  const instructionsVal = instructionsInput ? instructionsInput.value.trim() : "";
+  const hasInstructions = instructionsVal.length > 0;
+
+  if (!hasIngredients && !hasInstructions) {
+    recipeOutputEmpty.classList.remove('hidden');
+    recipeOutputContent.classList.add('hidden');
+    return;
+  }
+
+  recipeOutputEmpty.classList.add('hidden');
+  recipeOutputContent.classList.remove('hidden');
+
+  // 1. Render Ingredients
+  const ingredientWrapper = document.querySelector('.ingredientWrapper');
+  if (hasIngredients) {
+    if (ingredientWrapper) ingredientWrapper.classList.remove('hidden');
+
+    parsedRecipe.forEach((line, index) => {
+      if (line.isEmpty) return;
+
+      if (line.isHeader) {
+        const headerLi = document.createElement('li');
+        headerLi.className = 'ingredient-section-header';
+        headerLi.textContent = line.original;
+        ingredientsList.appendChild(headerLi);
+        return;
       }
-      return;
-    }
 
-    const li = document.createElement('li');
-    li.className = 'ingredient-item';
+      if (!line.isIngredient) {
+        const plainLi = document.createElement('li');
+        plainLi.className = 'ingredient-item';
+        plainLi.textContent = line.original;
+        ingredientsList.appendChild(plainLi);
+        return;
+      }
 
-    const selectedSubIdx = activeSubstitutions[index];
-    const hasSubActive = selectedSubIdx !== undefined && selectedSubIdx !== null;
-    const availableSubs = SUBSTITUTIONS[line.subKey];
-    const sub = (hasSubActive && availableSubs) ? availableSubs[selectedSubIdx] : null;
+      const li = document.createElement('li');
+      li.className = 'ingredient-item';
 
-    if (sub) {
-      const details = getSubstitutionDetails(line, sub, currentScaleFactor);
+      const selectedSubIdx = activeSubstitutions[index];
+      const hasSubActive = selectedSubIdx !== undefined && selectedSubIdx !== null;
+      const availableSubs = SUBSTITUTIONS[line.subKey];
+      const sub = (hasSubActive && availableSubs) ? availableSubs[selectedSubIdx] : null;
 
-      if (details.isMix) {
-        // Render mix substitution
-        li.classList.add('is-mix-item');
-        const rowDiv = document.createElement('div');
-        rowDiv.className = 'ingredient-row mix-ingredient-row';
+      if (sub) {
+        const details = getSubstitutionDetails(line, sub, currentScaleFactor);
 
-        const mixContent = document.createElement('div');
-        mixContent.className = 'mix-content';
+        if (details.isMix) {
+          // Render mix substitution
+          li.classList.add('is-mix-item');
+          const rowDiv = document.createElement('div');
+          rowDiv.className = 'ingredient-row mix-ingredient-row';
 
-        const headerDiv = document.createElement('div');
-        headerDiv.className = 'mix-header';
-        headerDiv.innerHTML = `<span class="mix-name">${escapeHtml(details.mixName)}</span> <span class="sub-for-text">(substitute for ${details.originalQtyStr ? escapeHtml(details.originalQtyStr) + ' ' : ''}${details.originalUnit ? escapeHtml(details.originalUnit) + ' ' : ''}${escapeHtml(details.originalName)})</span>:`;
+          const mixContent = document.createElement('div');
+          mixContent.className = 'mix-content';
 
-        const compUl = document.createElement('ul');
-        compUl.className = 'mix-components-list';
+          const headerDiv = document.createElement('div');
+          headerDiv.className = 'mix-header';
+          headerDiv.innerHTML = `<span class="mix-name">${escapeHtml(details.mixName)}</span> <span class="sub-for-text">(substitute for ${details.originalQtyStr ? escapeHtml(details.originalQtyStr) + ' ' : ''}${details.originalUnit ? escapeHtml(details.originalUnit) + ' ' : ''}${escapeHtml(details.originalName)})</span>:`;
 
-        details.components.forEach(c => {
-          const compLi = document.createElement('li');
-          compLi.className = 'mix-component-item';
-          compLi.innerHTML = `<span class="qty-highlight">${escapeHtml(c.qtyText)}</span> ${c.unitText ? escapeHtml(c.unitText) + ' ' : ''}${escapeHtml(c.name)}`;
-          compUl.appendChild(compLi);
-        });
+          const compUl = document.createElement('ul');
+          compUl.className = 'mix-components-list';
 
-        mixContent.appendChild(headerDiv);
-        mixContent.appendChild(compUl);
-        rowDiv.appendChild(mixContent);
+          details.components.forEach(c => {
+            const compLi = document.createElement('li');
+            compLi.className = 'mix-component-item';
+            compLi.innerHTML = `<span class="qty-highlight">${escapeHtml(c.qtyText)}</span> ${c.unitText ? escapeHtml(c.unitText) + ' ' : ''}${escapeHtml(c.name)}`;
+            compUl.appendChild(compLi);
+          });
 
-        // Sub Button
-        const subBadgeContainer = document.createElement('div');
-        subBadgeContainer.className = 'sub-badge-container';
-        subBadgeContainer.dataset.ingredientIndex = index;
+          mixContent.appendChild(headerDiv);
+          mixContent.appendChild(compUl);
+          rowDiv.appendChild(mixContent);
 
-        const subBtn = document.createElement('button');
-        subBtn.type = 'button';
-        subBtn.className = 'sub-toggle-btn active';
-        subBtn.innerHTML = `🍀 ${escapeHtml(sub.name)}`;
-        subBtn.title = `Substituting for ${line.name}`;
+          // Sub Button
+          const subBadgeContainer = document.createElement('div');
+          subBadgeContainer.className = 'sub-badge-container';
+          subBadgeContainer.dataset.ingredientIndex = index;
 
-        subBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const isOpen = subBtn.classList.contains('modal-open');
-          closeAllModals();
-          if (!isOpen) {
-            subBtn.classList.add('modal-open');
-            showSubstituteModal(index, subBadgeContainer, line, selectedSubIdx);
-          }
-        });
+          const subBtn = document.createElement('button');
+          subBtn.type = 'button';
+          subBtn.className = 'sub-toggle-btn active';
+          subBtn.innerHTML = `🍀 ${escapeHtml(sub.name)}`;
+          subBtn.title = `Substituting for ${line.name}`;
 
-        subBadgeContainer.appendChild(subBtn);
-        rowDiv.appendChild(subBadgeContainer);
-        li.appendChild(rowDiv);
+          subBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = subBtn.classList.contains('modal-open');
+            closeAllModals();
+            if (!isOpen) {
+              subBtn.classList.add('modal-open');
+              showSubstituteModal(index, subBadgeContainer, line, selectedSubIdx);
+            }
+          });
 
+          subBadgeContainer.appendChild(subBtn);
+          rowDiv.appendChild(subBadgeContainer);
+          li.appendChild(rowDiv);
+
+        } else {
+          // Render single substitution
+          const rowDiv = document.createElement('div');
+          rowDiv.className = 'ingredient-row';
+
+          const textSpan = document.createElement('span');
+          textSpan.className = 'ingredient-text';
+          textSpan.innerHTML = `<span class="qty-highlight">${escapeHtml(details.qtyText)}</span> ${details.unitText ? escapeHtml(details.unitText) + ' ' : ''}${escapeHtml(details.name)} <span class="sub-for-text">(substitute for ${escapeHtml(line.name)})</span>`;
+
+          rowDiv.appendChild(textSpan);
+
+          const subBadgeContainer = document.createElement('div');
+          subBadgeContainer.className = 'sub-badge-container';
+          subBadgeContainer.dataset.ingredientIndex = index;
+
+          const subBtn = document.createElement('button');
+          subBtn.type = 'button';
+          subBtn.className = 'sub-toggle-btn active';
+          subBtn.innerHTML = `🍀 ${escapeHtml(sub.name)}`;
+          subBtn.title = `Substituting for ${line.name}`;
+
+          subBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = subBtn.classList.contains('modal-open');
+            closeAllModals();
+            if (!isOpen) {
+              subBtn.classList.add('modal-open');
+              showSubstituteModal(index, subBadgeContainer, line, selectedSubIdx);
+            }
+          });
+
+          subBadgeContainer.appendChild(subBtn);
+          rowDiv.appendChild(subBadgeContainer);
+          li.appendChild(rowDiv);
+        }
       } else {
-        // Render single substitution
+        // Original ingredient without substitution
         const rowDiv = document.createElement('div');
         rowDiv.className = 'ingredient-row';
 
         const textSpan = document.createElement('span');
         textSpan.className = 'ingredient-text';
-        textSpan.innerHTML = `<span class="qty-highlight">${escapeHtml(details.qtyText)}</span> ${details.unitText ? escapeHtml(details.unitText) + ' ' : ''}${escapeHtml(details.name)} <span class="sub-for-text">(substitute for ${escapeHtml(line.name)})</span>`;
-
+        textSpan.innerHTML = buildScaledLineHTML(line, currentScaleFactor);
         rowDiv.appendChild(textSpan);
 
         const subBadgeContainer = document.createElement('div');
@@ -674,9 +875,11 @@ function updateAdjustedRecipe() {
 
         const subBtn = document.createElement('button');
         subBtn.type = 'button';
-        subBtn.className = 'sub-toggle-btn active';
-        subBtn.innerHTML = `🍀 ${escapeHtml(sub.name)}`;
-        subBtn.title = `Substituting for ${line.name}`;
+        subBtn.className = 'sub-toggle-btn';
+
+        const hasLocalSubs = availableSubs && availableSubs.length > 0;
+        subBtn.innerHTML = hasLocalSubs ? `🍀 Substitute` : `✨ AI Substitute`;
+        subBtn.title = hasLocalSubs ? "View substitution options" : "Generate dynamic AI substitutes for this ingredient";
 
         subBtn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -690,53 +893,31 @@ function updateAdjustedRecipe() {
 
         subBadgeContainer.appendChild(subBtn);
         rowDiv.appendChild(subBadgeContainer);
+
         li.appendChild(rowDiv);
       }
-    } else {
-      // Original ingredient without substitution
-      const rowDiv = document.createElement('div');
-      rowDiv.className = 'ingredient-row';
 
-      const textSpan = document.createElement('span');
-      textSpan.className = 'ingredient-text';
-      textSpan.innerHTML = buildScaledLineHTML(line, currentScaleFactor);
-      rowDiv.appendChild(textSpan);
+      ingredientsList.appendChild(li);
+    });
+  } else {
+    if (ingredientWrapper) ingredientWrapper.classList.add('hidden');
+  }
 
-      const subBadgeContainer = document.createElement('div');
-      subBadgeContainer.className = 'sub-badge-container';
-      subBadgeContainer.dataset.ingredientIndex = index;
-
-      const subBtn = document.createElement('button');
-      subBtn.type = 'button';
-      subBtn.className = 'sub-toggle-btn';
-
-      const hasLocalSubs = availableSubs && availableSubs.length > 0;
-      subBtn.innerHTML = hasLocalSubs ? `🍀 Substitute` : `✨ AI Substitute`;
-      subBtn.title = hasLocalSubs ? "View substitution options" : "Generate dynamic AI substitutes for this ingredient";
-
-      subBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isOpen = subBtn.classList.contains('modal-open');
-        closeAllModals();
-        if (!isOpen) {
-          subBtn.classList.add('modal-open');
-          showSubstituteModal(index, subBadgeContainer, line, selectedSubIdx);
-        }
-      });
-
-      subBadgeContainer.appendChild(subBtn);
-      rowDiv.appendChild(subBadgeContainer);
-
-      li.appendChild(rowDiv);
-    }
-
-    ingredientsList.appendChild(li);
-  });
-
-  // Render instructions block if we found text instructions
-  if (instructionLines.length > 0) {
+  // 2. Render Instructions with properly scaled ingredient measurements
+  if (hasInstructions) {
     instructionsWrapper.classList.remove('hidden');
-    instructionsText.innerHTML = instructionLines.map(line => `<p>${escapeHtml(line)}</p>`).join('');
+    const knownWords = getKnownIngredientWords(parsedRecipe);
+    const instructionLines = instructionsInput.value.split('\n');
+
+    let renderedHTML = '';
+    instructionLines.forEach(line => {
+      const adjusted = adjustInstructionLine(line, currentScaleFactor, knownWords);
+      if (!adjusted.isEmpty) {
+        renderedHTML += `<p>${adjusted.html}</p>`;
+      }
+    });
+
+    instructionsText.innerHTML = renderedHTML || '<p class="empty-instructions">No instructions entered.</p>';
   } else {
     instructionsWrapper.classList.add('hidden');
   }
@@ -897,8 +1078,8 @@ async function generateAISubstitutions(ingredientName, onStatusUpdate) {
 
   const ingredientLines = (parsedRecipe && parsedRecipe.length > 0)
     ? parsedRecipe.filter(l => l.isIngredient).map(l => l.original.trim())
-    : (recipeInput && recipeInput.value.trim()
-      ? recipeInput.value.split('\n').map(l => parseLine(l)).filter(l => l.isIngredient).map(l => l.original.trim())
+    : (ingredientsInput && ingredientsInput.value.trim()
+      ? ingredientsInput.value.split('\n').map(l => parseIngredientLine(l)).filter(l => l.isIngredient).map(l => l.original.trim())
       : []);
 
   const ingredientsContext = ingredientLines.length > 0
@@ -1141,38 +1322,56 @@ function closeAllModals() {
 
 // Copies the final recipe output text into clipboard
 function copyRecipeToClipboard() {
-  let copyText = "Scaled Recipe (Adjusted by " + currentScaleFactor + "x):\n\n";
+  let copyText = `Scaled Recipe (Adjusted by ${currentScaleFactor}x):\n\n`;
 
-  parsedRecipe.forEach((line, index) => {
-    if (!line.isIngredient) return;
+  const hasIngredients = parsedRecipe && parsedRecipe.some(line => !line.isEmpty);
+  if (hasIngredients) {
+    copyText += "Ingredients:\n";
+    parsedRecipe.forEach((line, index) => {
+      if (line.isEmpty) return;
 
-    const selectedSubIdx = activeSubstitutions[index];
-    const availableSubs = SUBSTITUTIONS[line.subKey];
-    const hasSubActive = selectedSubIdx !== undefined && selectedSubIdx !== null && availableSubs;
-
-    if (hasSubActive) {
-      const sub = availableSubs[selectedSubIdx];
-      const details = getSubstitutionDetails(line, sub, currentScaleFactor);
-
-      if (details.isMix) {
-        copyText += `${details.mixName} (substitute for ${details.originalQtyStr ? details.originalQtyStr + ' ' : ''}${details.originalUnit ? details.originalUnit + ' ' : ''}${details.originalName}):\n`;
-        details.components.forEach(c => {
-          copyText += `  • ${c.qtyText}${c.unitText ? ' ' + c.unitText : ''} ${c.name}\n`;
-        });
-      } else {
-        copyText += `${details.qtyText ? details.qtyText + ' ' : ''}${details.unitText ? details.unitText + ' ' : ''}${details.name} (substitute for ${line.name})\n`;
+      if (line.isHeader || !line.isIngredient) {
+        copyText += `${line.original}\n`;
+        return;
       }
-    } else {
-      copyText += `${buildScaledLineText(line, currentScaleFactor)}\n`;
-    }
-  });
 
-  const instructionLines = parsedRecipe.filter(line => !line.isIngredient && !line.isEmpty).map(line => line.original);
-  if (instructionLines.length > 0) {
-    copyText += "\nInstructions:\n" + instructionLines.join('\n');
+      const selectedSubIdx = activeSubstitutions[index];
+      const availableSubs = SUBSTITUTIONS[line.subKey];
+      const hasSubActive = selectedSubIdx !== undefined && selectedSubIdx !== null && availableSubs;
+
+      if (hasSubActive) {
+        const sub = availableSubs[selectedSubIdx];
+        const details = getSubstitutionDetails(line, sub, currentScaleFactor);
+
+        if (details.isMix) {
+          copyText += `${details.mixName} (substitute for ${details.originalQtyStr ? details.originalQtyStr + ' ' : ''}${details.originalUnit ? details.originalUnit + ' ' : ''}${details.originalName}):\n`;
+          details.components.forEach(c => {
+            copyText += `  • ${c.qtyText}${c.unitText ? ' ' + c.unitText : ''} ${c.name}\n`;
+          });
+        } else {
+          copyText += `${details.qtyText ? details.qtyText + ' ' : ''}${details.unitText ? details.unitText + ' ' : ''}${details.name} (substitute for ${line.name})\n`;
+        }
+      } else {
+        copyText += `${buildScaledLineText(line, currentScaleFactor)}\n`;
+      }
+    });
   }
 
-  navigator.clipboard.writeText(copyText).then(() => {
+  const instructionsVal = instructionsInput ? instructionsInput.value.trim() : "";
+  if (instructionsVal) {
+    if (hasIngredients) copyText += "\n";
+    copyText += "Instructions:\n";
+    const knownWords = getKnownIngredientWords(parsedRecipe);
+    const lines = instructionsInput.value.split('\n');
+    lines.forEach(line => {
+      const adjusted = adjustInstructionLine(line, currentScaleFactor, knownWords);
+      if (!adjusted.isEmpty) {
+        copyText += `${adjusted.text}\n`;
+      }
+    });
+  }
+
+  navigator.clipboard.writeText(copyText.trim()).then(() => {
     showToast("Recipe copied! 🎂");
   }).catch(err => {
     console.error('Failed to copy text: ', err);
