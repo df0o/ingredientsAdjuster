@@ -2,6 +2,8 @@
 let currentScaleFactor = 1.0;
 let parsedRecipe = []; // holds list of line objects
 let activeSubstitutions = {}; // maps ingredient index to selected substitute index
+let checkedIngredients = new Set(); // tracks completed ingredient indices
+let lastIngredientsInputText = '';
 
 // WebGPU In-Browser Engine State
 let webllmEngine = null;
@@ -31,6 +33,8 @@ customScale.addEventListener('input', handleCustomScaleChange);
 if (clearIngredientsBtn) {
   clearIngredientsBtn.addEventListener('click', () => {
     ingredientsInput.value = '';
+    checkedIngredients.clear();
+    lastIngredientsInputText = '';
     handleRecipeChange();
     ingredientsInput.focus();
   });
@@ -103,11 +107,17 @@ function handleRecipeChange() {
   const ingText = ingredientsInput.value;
   const instText = instructionsInput.value;
 
+  if (ingText !== lastIngredientsInputText) {
+    checkedIngredients.clear();
+    lastIngredientsInputText = ingText;
+  }
+
   if (!ingText.trim() && !instText.trim()) {
     recipeOutputEmpty.classList.remove('hidden');
     recipeOutputContent.classList.add('hidden');
     parsedRecipe = [];
     activeSubstitutions = {};
+    checkedIngredients.clear();
     return;
   }
 
@@ -719,6 +729,48 @@ function adjustInstructionLine(line, scaleFactor, knownWords = new Set()) {
   return { html: htmlResult, text: textResult, isEmpty: false };
 }
 
+// Helper: Creates an interactive checkbox for an ingredient item
+function createIngredientCheckbox(index, li, labelText = 'ingredient') {
+  const label = document.createElement('label');
+  label.className = 'ingredient-checkbox-label';
+  label.title = 'Mark as done';
+
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.className = 'ingredient-checkbox';
+  checkbox.setAttribute('aria-label', `Mark ${labelText} as done`);
+  checkbox.dataset.ingredientIndex = index;
+
+  const isChecked = checkedIngredients.has(index);
+  checkbox.checked = isChecked;
+  if (isChecked) {
+    li.classList.add('is-checked');
+  }
+
+  checkbox.addEventListener('change', () => {
+    if (checkbox.checked) {
+      checkedIngredients.add(index);
+      li.classList.add('is-checked');
+    } else {
+      checkedIngredients.delete(index);
+      li.classList.remove('is-checked');
+    }
+  });
+
+  const customBox = document.createElement('span');
+  customBox.className = 'custom-checkbox';
+  customBox.setAttribute('aria-hidden', 'true');
+  customBox.innerHTML = `
+    <svg class="checkbox-icon" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2.5 7.5L5.5 10.5L11.5 3.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+
+  label.appendChild(checkbox);
+  label.appendChild(customBox);
+  return label;
+}
+
 // Renders the adjusted recipe in the UI
 function updateAdjustedRecipe() {
   ingredientsList.innerHTML = '';
@@ -756,13 +808,23 @@ function updateAdjustedRecipe() {
       if (!line.isIngredient) {
         const plainLi = document.createElement('li');
         plainLi.className = 'ingredient-item';
-        plainLi.textContent = line.original;
+        plainLi.appendChild(createIngredientCheckbox(index, plainLi, line.trimmed || line.original));
+
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'ingredient-row';
+        const textSpan = document.createElement('span');
+        textSpan.className = 'ingredient-text';
+        textSpan.textContent = line.original;
+        rowDiv.appendChild(textSpan);
+        plainLi.appendChild(rowDiv);
+
         ingredientsList.appendChild(plainLi);
         return;
       }
 
       const li = document.createElement('li');
       li.className = 'ingredient-item';
+      li.appendChild(createIngredientCheckbox(index, li, line.name || line.trimmed || 'ingredient'));
 
       const selectedSubIdx = activeSubstitutions[index];
       const hasSubActive = selectedSubIdx !== undefined && selectedSubIdx !== null;

@@ -686,13 +686,95 @@ body {
 }
 
 .ingredient-item::before {
-  content: '•';
-  color: var(--accent-color);
-  font-size: 1.35rem;
-  line-height: 1.4;
+  display: none !important;
+}
+
+/* Ingredient Checkbox Styling */
+.ingredient-checkbox-label {
   position: absolute;
-  left: -1.15rem;
-  top: 2px;
+  left: -1.45rem;
+  top: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  user-select: none;
+  padding: 4px;
+  margin: -4px;
+}
+
+.ingredient-checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.custom-checkbox {
+  width: 18px;
+  height: 18px;
+  background-color: #FFFFFF;
+  border: 2px solid #D8C3B0;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 1px 3px rgba(93, 64, 55, 0.08);
+  flex-shrink: 0;
+}
+
+.custom-checkbox .checkbox-icon {
+  width: 11px;
+  height: 11px;
+  stroke: #FFFFFF;
+  transform: scale(0);
+  transition: transform 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.4);
+}
+
+/* Checkbox Hover State */
+.ingredient-checkbox-label:hover .custom-checkbox {
+  border-color: var(--accent-color);
+  background-color: #FFFDF9;
+  box-shadow: 0 2px 6px rgba(255, 155, 113, 0.25);
+  transform: scale(1.08);
+}
+
+/* Checkbox Checked State */
+.ingredient-checkbox:checked + .custom-checkbox {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 5px rgba(255, 155, 113, 0.35);
+  transform: scale(1.02);
+}
+
+.ingredient-checkbox:checked + .custom-checkbox .checkbox-icon {
+  transform: scale(1);
+}
+
+/* Checkbox Focus Visible for Accessibility */
+.ingredient-checkbox:focus-visible + .custom-checkbox {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+/* Checked Ingredient Item Styling */
+.ingredient-item.is-checked .ingredient-text,
+.ingredient-item.is-checked .mix-header,
+.ingredient-item.is-checked .mix-components-list {
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 155, 113, 0.65);
+  text-decoration-thickness: 1.5px;
+  color: var(--text-muted);
+  opacity: 0.6;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.ingredient-item.is-checked .qty-highlight {
+  background-color: rgba(200, 180, 170, 0.15);
+  color: var(--text-muted);
 }
 
 .ingredient-row {
@@ -1255,9 +1337,23 @@ body {
     left: 1.25rem;
   }
 
-  .ingredient-item::before,
   .instructions-text p::before {
     left: -0.85rem;
+  }
+
+  .ingredient-checkbox-label {
+    left: -1.15rem;
+    top: 5px;
+  }
+
+  .custom-checkbox {
+    width: 16px;
+    height: 16px;
+  }
+
+  .custom-checkbox .checkbox-icon {
+    width: 9px;
+    height: 9px;
   }
 
   .ingredient-row {
@@ -1307,15 +1403,29 @@ body {
   }
 
   .output-card .card-body {
-    padding: 1rem 0.5rem 1rem 1.25rem;
+    padding: 1rem 0.5rem 1rem 1.35rem;
   }
 
   .output-card .card-body::before {
-    left: 0.9rem;
+    left: 1rem;
   }
 
-  .ingredient-item::before,
   .instructions-text p::before {
     left: -0.65rem;
+  }
+
+  .ingredient-checkbox-label {
+    left: -0.95rem;
+    top: 5px;
+  }
+
+  .custom-checkbox {
+    width: 15px;
+    height: 15px;
+  }
+
+  .custom-checkbox .checkbox-icon {
+    width: 8px;
+    height: 8px;
   }
 }
